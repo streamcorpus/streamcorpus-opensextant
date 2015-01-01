@@ -44,11 +44,13 @@ import logging
 import json
 import os.path
 import sys
+import time
 import traceback
 
 import requests
+from sortedcollection import SortedCollection
 
-from streamcorpus import Chunk, Tagging, Sentence, Token
+from streamcorpus import Chunk, Tagging, Sentence, Token, make_stream_time, OffsetType
 from streamcorpus_pipeline.stages import IncrementalTransform
 
 logger = logging.getLogger('streamcorpus_pipeline' + '.' + __name__)
@@ -156,8 +158,8 @@ class OpenSextantTagger(IncrementalTransform):
             result = json.loads(response.content)
 
             # TODO: write make_tagging and make_sentences to parse the JSON respons
-            si.body.taggings[self.tagger_id] = make_tagging(result)
-            si.body.sentences[self.tagger_id] = make_sentences(result)
+            si.body.taggings[self.tagger_id] = self.make_tagging(result)
+            si.body.sentences[self.tagger_id] = label_sentences(si, result)
 
             #si.body.relations[self.tagger_id] = make_relations(result)
             #si.body.attributes[self.tagger_id] = make_attributes(result)
@@ -172,9 +174,25 @@ class OpenSextantTagger(IncrementalTransform):
         '''
         pass
 
-def make_tagging(result):
-    return Tagging()
+    def make_tagging(self, result):
+        return Tagging(
+            tagger_id=self.tagger_id,
+            tagger_version='2.1',
+            generation_time=make_stream_time(time.time()),
+        )
 
-def make_sentences(result):
-    logger.info(json.dumps(result, indent=4, sort_keys=4))
-    sys.exit()
+def label_sentences(si, result):
+    #logger.info(json.dumps(result, indent=4, sort_keys=4))
+    #sys.exit()
+    
+    sentences = si.body.sentences['nltk_tokenizer']
+    token_collection = SortedCollection(
+        itertools.chain(*[sent.tokens for sent in sentences]),
+        key=lambda tok: tok.offsets[OffsetType.BYTES].first
+        )
+
+    for anno in result.get('annoList', []):
+        assert si.body.clean_visible[anno['start']:anno['end']] == anno['matchText']
+        sent = Sentence(tokens=[])
+        
+
