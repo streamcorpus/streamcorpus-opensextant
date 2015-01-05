@@ -202,7 +202,10 @@ def annotate_sentences(si, result):
             continue
         start = anno['start']
         end = anno['end']
-        assert si.body.clean_visible[start:end] == anno['matchText']
+        if not si.body.clean_visible.decode('utf8')[start:end] == anno['matchText']:
+            logger.critical('alignment failure: %r (take 3 chars off ends) != %r',
+                            si.body.clean_visible.decode('utf8')[start-3:end+3], 
+                            anno['matchText'])
         
         for tok in toks.find_range(start, end):
             fhierarchy = anno['features']['hierarchy']
