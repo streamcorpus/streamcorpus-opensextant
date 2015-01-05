@@ -40,8 +40,9 @@ For all stages that expect a tagger ID, this uses a tagger ID of
 
 '''
 from __future__ import absolute_import
-import logging
+import itertools
 import json
+import logging
 import os.path
 import sys
 import time
@@ -50,7 +51,8 @@ import traceback
 import requests
 from sortedcollection import SortedCollection
 
-from streamcorpus import Chunk, Tagging, Sentence, Token, make_stream_time, OffsetType
+from streamcorpus import Chunk, Tagging, Sentence, Token, make_stream_time, \
+    OffsetType, EntityType, MentionType
 from streamcorpus_pipeline.stages import IncrementalTransform
 
 logger = logging.getLogger('streamcorpus_pipeline' + '.' + __name__)
@@ -159,7 +161,7 @@ class OpenSextantTagger(IncrementalTransform):
 
             # TODO: write make_tagging and make_sentences to parse the JSON respons
             si.body.taggings[self.tagger_id] = self.make_tagging(result)
-            si.body.sentences[self.tagger_id] = label_sentences(si, result)
+            si.body.sentences[self.tagger_id] = annotate_sentences(si, result)
 
             #si.body.relations[self.tagger_id] = make_relations(result)
             #si.body.attributes[self.tagger_id] = make_attributes(result)
@@ -181,18 +183,232 @@ class OpenSextantTagger(IncrementalTransform):
             generation_time=make_stream_time(time.time()),
         )
 
-def label_sentences(si, result):
-    #logger.info(json.dumps(result, indent=4, sort_keys=4))
+
+def annotate_sentences(si, result):
+    logger.info(json.dumps(result, indent=4, sort_keys=4))
     #sys.exit()
     
     sentences = si.body.sentences['nltk_tokenizer']
-    token_collection = SortedCollection(
+    toks = SortedCollection(
         itertools.chain(*[sent.tokens for sent in sentences]),
         key=lambda tok: tok.offsets[OffsetType.BYTES].first
         )
 
+    mention_id = 0
     for anno in result.get('annoList', []):
-        assert si.body.clean_visible[anno['start']:anno['end']] == anno['matchText']
-        sent = Sentence(tokens=[])
+        if not anno.get('features', {}).get('isEntity'): 
+            logger.debug('skipping isEntity=False: %s', 
+                         json.dumps(anno, indent=4, sort_keys=True))
+            continue
+        start = anno['start']
+        end = anno['end']
+        assert si.body.clean_visible[start:end] == anno['matchText']
         
+        for tok in toks.find_range(start, end):
+            fhierarchy = anno['features']['hierarchy']
+            fh_parts = fhierarchy.split('.')
+            if entity_types.get(fhierarchy):
+                e_type, m_type = entity_types[fhierarchy]
+            elif entity_types.get(fh_parts[0]):
+                e_type, m_type = entity_types[fh_parts[0]]
+            else:
+                e_type, m_type = None, None
+
+            if e_type is not None:
+                tok.entity_type = e_type
+                tok.mention_type = m_type
+                tok.mention_id = mention_id
+                ## too bad no coref chains, so nominals are not connected
+                ## to names:
+                tok.equiv_id = mention_id  
+
+        mention_id += 1
+
+
+entity_types = {
+    ## most events are unnamed, so default to NOM
+    'Action': (EntityType.EVENT, MentionType.NOM),
+
+    'Attribute.attribute.measurableCharacteristic': None,
+    'Attribute.weight': None,
+
+    ## descriptive attributes --> nominatives
+    'Geo.area': (EntityType.LOC, MentionType.NOM),
+    'Geo.distance': (EntityType.LOC, MentionType.NOM),
+    'Geo.weather': (EntityType.LOC, MentionType.NOM),
+
+    ## most GEO area named locations
+    'Geo.featureType.AdminRegion': (EntityType.LOC, MentionType.NAME),
+    'Geo.featureType.Area': (EntityType.LOC, MentionType.NAME),
+    'Geo.featureType.Hydro': (EntityType.LOC, MentionType.NAME),
+    'Geo.featureType.Hypso': (EntityType.LOC, MentionType.NAME),
+    'Geo.featureType.Misc': (EntityType.LOC, MentionType.NAME),
+    'Geo.featureType.PopulatedPlace': (EntityType.LOC, MentionType.NAME),
+    'Geo.featureType.Street': (EntityType.LOC, MentionType.NAME),
+    'Geo.featureType.Undersea': (EntityType.LOC, MentionType.NAME),
+    'Geo.featureType.Vegetation': (EntityType.LOC, MentionType.NAME),
+
+    'Geo.place.geocoordinate': (EntityType.LOC, MentionType.NAME),
+    'Geo.place.namedPlace': (EntityType.LOC, MentionType.NAME),
+
+    ## these are usually named facilities
+    'Geo.featureType.SpotFeature': (EntityType.FAC, MentionType.NAME),
+    'Geo.facilityComponents': (EntityType.FAC, MentionType.NAME),
+
+    'Idea': None,
+    'Information': None,
+    'Object': None,
+
+    'Organization': (EntityType.ORG, MentionType.NAME),
+    'Person': (EntityType.PER, MentionType.NAME),
+
+    ## would be nice to map these into relations
+    'Person.attitude.emotion': None,
+    'Person.attitude.emotion.negativeEmotion': None,
+    'Person.attitude.emotion.positiveEmotion': None,
+    'Person.bodyPart': None,
+    'Person.ethnicity': None,
+    'Person.health': None,
+    'Person.health.disease': None,
+    'Person.health.injury': None,
+    'Person.jobOrRole': None,
+    'Person.language': None,
+
+    'Person.name.personName': (EntityType.PER, MentionType.NAME),
+
+    'Person.name.title.corporateTitle': (EntityType.PER, MentionType.NOM),
+    'Person.name.title.governmentTitle': (EntityType.PER, MentionType.NOM),
+    'Person.name.title.hereditaryTitle': (EntityType.PER, MentionType.NOM),
+    'Person.name.title.militaryTitle': (EntityType.PER, MentionType.NOM),
+    'Person.name.title.personalTitle': (EntityType.PER, MentionType.NOM),
+    'Person.name.title.religiousTitle': (EntityType.PER, MentionType.NOM),
+
+    'Person.relative': None,
+
+    'Substance': None,
+    'Time': None,
+}
+
+
+## this list of hierarchical entity types is copied from
+## https://github.com/OpenSextant/OpenSextantToolbox/blob/master/LanguageResources/docs/
+entity_hierarchy = {
+    'Action.event': None,
+    'Action.event.crime': None,
+    'Action.event.disaster': None,
+    'Action.event.legalEvent': None,
+    'Action.event.meetingEvent': None,
+    'Action.event.militaryEvent': None,
+    'Action.event.movement': None,
+    'Action.event.politicalEvent': None,
+    'Action.event.socialEvent': None,
+    'Action.event.violentEvent': None,
+    'Attribute.attribute.measurableCharacteristic': None,
+    'Attribute.weight': None,
+    'Geo.area': None,
+    'Geo.distance': None,
+    'Geo.facilityComponents': None,
+    'Geo.featureType.AdminRegion': None,
+    'Geo.featureType.Area': None,
+    'Geo.featureType.Hydro': None,
+    'Geo.featureType.Hypso': None,
+    'Geo.featureType.Misc': None,
+    'Geo.featureType.PopulatedPlace': None,
+    'Geo.featureType.SpotFeature': None,
+    'Geo.featureType.Street': None,
+    'Geo.featureType.Undersea': None,
+    'Geo.featureType.Vegetation': None,
+    'Geo.place.geocoordinate': None,
+    'Geo.place.namedPlace': None,
+    'Geo.weather': None,
+    'Idea.fieldOfStudy': None,
+    'Idea.idea': None,
+    'Idea.ideology.politicalIdealogy': None,
+    'Idea.ideology.socialIdealogy': None,
+    'Information': None,
+    'Information.identifier': None,
+    'Information.identifier.documentTitle': None,
+    'Information.identifier.MACAddress': None,
+    'Information.identifier.telephoneNumber': None,
+    'Information.informationArtifact': None,
+    'Information.software': None,
+    'Information.web.emailAddress': None,
+    'Information.web.IPAddress': None,
+    'Information.web.url': None,
+    'Information.web.webSite': None,
+    'Object': None,
+    'Object.animal': None,
+    'Object.clothing': None,
+    'Object.container': None,
+    'Object.debris': None,
+    'Object.electronics': None,
+    'Object.equipment': None,
+    'Object.equipment.constructionEquipment': None,
+    'Object.equipment.tool': None,
+    'Object.finance.financialInstrument': None,
+    'Object.finance.money': None,
+    'Object.finance.money': None,
+    'Object.food': None,
+    'Object.vehicle': None,
+    'Object.vehicle.aircraft': None,
+    'Object.vehicle.aircraft.combatAircraft': None,
+    'Object.vehicle.aircraft.combatSupportAircraft': None,
+    'Object.vehicle.aircraft.helicopter': None,
+    'Object.vehicle.emergencyVehicle': None,
+    'Object.vehicle.militaryVehicle': None,
+    'Object.vehicle.militaryVehicle.armoredVehicle': None,
+    'Object.vehicle.ship': None,
+    'Object.vehicle.spacecraft': None,
+    'Object.vehicle.submarine': None,
+    'Object.weapon': None,
+    'Object.weapon.explosive': None,
+    'Object.weapon.firearm': None,
+    'Object.weapon.weaponOfMassDestruction': None,
+    'Organization': None,
+    'Organization.corporateOrganization': None,
+    'Organization.criminalOrganization': None,
+    'Organization.governmentOrganization': None,
+    'Organization.governmentOrganization.politicalParty': None,
+    'Organization.governmentOrganization.USGovernmentOrganization': None,
+    'Organization.informalOrganization': None,
+    'Organization.internationalOrganization': None,
+    'Organization.media.newspaper': None,
+    'Organization.militantGroup': None,
+    'Organization.militaryOrganization': None,
+    'Organization.religion': None,
+    'Organization.terroristGroup': None,
+    'Person': None,
+    'Person.attitude.emotion': None,
+    'Person.attitude.emotion.negativeEmotion': None,
+    'Person.attitude.emotion.positiveEmotion': None,
+    'Person.bodyPart': None,
+    'Person.ethnicity': None,
+    'Person.health': None,
+    'Person.health.disease': None,
+    'Person.health.injury': None,
+    'Person.jobOrRole': None,
+    'Person.language': None,
+    'Person.name.personName': None,
+    'Person.name.personName': None,
+    'Person.name.title.corporateTitle': None,
+    'Person.name.title.governmentTitle': None,
+    'Person.name.title.hereditaryTitle': None,
+    'Person.name.title.militaryTitle': None,
+    'Person.name.title.personalTitle': None,
+    'Person.name.title.religiousTitle': None,
+    'Person.relative': None,
+    'Substance': None,
+    'Substance.chemical': None,
+    'Substance.drug': None,
+    'Substance.material': None,
+    'Time.date': None,
+    'Time.date': None,
+    'Time.dayOfTheWeek': None,
+    'Time.holiday': None,
+    'Time.lengthOfTime': None,
+    'Time.month': None,
+    'Time.season': None,
+    'Time.time': None,
+    'Time.timePhrase': None,
+}
 
