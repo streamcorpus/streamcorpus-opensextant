@@ -18,6 +18,13 @@ from streamcorpus_opensextant.tagger import OpenSextantTagger
 logger = logging.getLogger('streamcorpus_pipeline.' + __name__)
 
 texts = [
+    ('Traveling to Paris, Texas.',
+     [[
+         ('Traveling', None),
+         ('to', None),
+         ('Paris,', EntityType.LOC),
+         ('Texas.', EntityType.LOC),
+     ]]),
     (u'\u2602 on the John Smith traveling in Liberia. It continues with a second sentence about Paris.',
      [[(u'\u2602', None),
       ('on', None),
@@ -26,7 +33,7 @@ texts = [
       ('Smith', EntityType.PER),
       ('traveling', None),
       ('in', None),
-      ('Liberia.', None),],[  ## sadly not EntityType.LOC
+      ('Liberia.', EntityType.LOC),],[
       ('It', None),
       ('continues', None),
       ('with', None),
@@ -34,18 +41,18 @@ texts = [
       ('second', None),
       ('sentence', None),
       ('about', None),
-      ('Paris.', None),],   ## sadly not EntityType.LOC
+      ('Paris.', EntityType.LOC),],
   ]),
     (u"""Paris, France is not Paris, Texas.
     Fran\u00e7oise Smith has lived in the cities of Montreal and Qu\u00e9bec, Canada.
     And everyone else lives in France.
     """,
-     [[('Paris,', None),
-      ('France', None),
+     [[('Paris,', EntityType.LOC),
+      ('France', EntityType.LOC),
       ('is', None),
       ('not', None),
-      ('Paris,', None),
-      ('Texas.', None),],[
+      ('Paris,', EntityType.LOC),
+      ('Texas.', EntityType.LOC),],[
       (u'Fran\u00e7oise', EntityType.PER),
       ('Smith', EntityType.PER),
       ('has', None),
@@ -54,16 +61,16 @@ texts = [
           ('the', EntityType.LOC),     ## wrong
           ('cities', EntityType.LOC),  ## wrong
       ('of', None),
-      ('Montreal', None),
+      ('Montreal', EntityType.LOC),
       ('and', None),
-      (u'Qu\u00e9bec,', None),
-      ('Canada.', None),],[
+      (u'Qu\u00e9bec,', EntityType.LOC),
+      ('Canada.', EntityType.LOC),],[
       ('And', None),
       ('everyone', None),
       ('else', None),
       ('lives', None),
       ('in', None),
-      ('France.', None),]
+      ('France.', EntityType.LOC),]
   ]),
 ]  
 

@@ -210,10 +210,10 @@ class OpenSextantTagger(IncrementalTransform):
         cv = si.body.clean_visible.decode('utf8')
         mention_id = 0
         for anno in result.get('annoList', []):
-            if not anno.get('features', {}).get('isEntity'): 
-                logger.debug('skipping isEntity=False: %s', 
-                             json.dumps(anno, indent=4, sort_keys=True))
-                continue
+            #if not anno.get('features', {}).get('isEntity'): 
+            #    logger.debug('skipping isEntity=False: %s', 
+            #                 json.dumps(anno, indent=4, sort_keys=True))
+            #    continue
             start = anno['start']
             end = anno['end']
             if not cv[start:end] == anno['matchText']:
