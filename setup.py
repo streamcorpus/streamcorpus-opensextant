@@ -12,7 +12,7 @@ setup(
     author_email='support@diffeo.com',
     packages=find_packages(),
     install_requires=[
-        'streamcorpus >= 0.3.33',
+        'streamcorpus >= 0.3.42',
         'streamcorpus_pipeline >= 0.5.30',
     ],
     entry_points={
