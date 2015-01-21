@@ -4,6 +4,7 @@
 from __future__ import absolute_import
 import json
 import logging
+import os
 import pytest
 import sys
 
@@ -100,11 +101,16 @@ def use_live_service(request):
         except Exception, exc:
             logger.warn('will skip running against actual container because:', exc_info=True)
             pytest.skip('will skip running against actual container because: %r' % exc)
-    return use_live_service
+    return request.param
 
 
-@pytest.mark.parametrize('text,tokens,json_data', texts)
-def test_opensextant_tagger(text, tokens, json_data, use_live_service):
+class DummyResponse(object):
+    def __init__(self, json_data):
+        self.content = json_data
+
+
+@pytest.mark.parametrize('text,tokens,json_path', texts)
+def test_opensextant_tagger(text, tokens, json_path, use_live_service):
 
     si = make_stream_item(10, 'fake_url')
     si.body.clean_visible = text.encode('utf8')
@@ -113,7 +119,8 @@ def test_opensextant_tagger(text, tokens, json_data, use_live_service):
 
     ost = OpenSextantTagger(OpenSextantTagger.default_config)
     if not use_live_service:
-        ost.request_json = lambda si: json_data
+        fpath = os.path.join(os.path.dirname(__file__), json_path)
+        ost.request_json = lambda si: DummyResponse(open(fpath).read())
 
     tokenizer.process_item(si)
     ost.process_item(si)
