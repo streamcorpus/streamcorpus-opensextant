@@ -2,6 +2,7 @@
 # -*- coding: <utf-8> -*-
 
 from __future__ import absolute_import
+import json
 import logging
 import pytest
 import sys
@@ -24,7 +25,9 @@ texts = [
          ('to', None),
          ('Paris,', EntityType.LOC),
          ('Texas.', EntityType.LOC),
-     ]]),
+     ]],
+     'query-26.json',
+    ),
     (u'\u2602 on the John Smith traveling in Liberia. It continues with a second sentence about Paris.',
      [[(u'\u2602', None),
       ('on', None),
@@ -42,7 +45,9 @@ texts = [
       ('sentence', None),
       ('about', None),
       ('Paris.', EntityType.LOC),],
-  ]),
+      ],
+      'query-92.json',
+    ),
     (u"""Paris, France is not Paris, Texas.
     Fran\u00e7oise Smith has lived in the cities of Montreal and Qu\u00e9bec, Canada.
     And everyone else lives in France.
@@ -70,12 +75,36 @@ texts = [
       ('else', None),
       ('lives', None),
       ('in', None),
-      ('France.', EntityType.LOC),]
-  ]),
-]  
+      ('France.', EntityType.LOC),],
+      ],
+     'query-156.json',
+     ),
+]
 
-@pytest.mark.parametrize('text,tokens', texts)
-def test_opensextant_tagger(text, tokens):
+
+@pytest.fixture(scope='session',
+                params=[True, False])
+def use_live_service(request):
+    if request.param:
+        try:
+            config = OpenSextantTagger.default_config
+            rest_url = config['scheme'] + '://' + config['network_address'] + \
+                       '/opensextant/extract/'
+            resp = requests.post(
+                rest_url,
+                timeout=10,
+            )
+            data = json.loads(resp.content)
+            assert type(data) == list
+            assert 'general' in data
+        except Exception, exc:
+            logger.warn('will skip running against actual container because:', exc_info=True)
+            pytest.skip('will skip running against actual container because: %r' % exc)
+    return use_live_service
+
+
+@pytest.mark.parametrize('text,tokens,json_data', texts)
+def test_opensextant_tagger(text, tokens, json_data, use_live_service):
 
     si = make_stream_item(10, 'fake_url')
     si.body.clean_visible = text.encode('utf8')
@@ -83,6 +112,9 @@ def test_opensextant_tagger(text, tokens):
     tokenizer = nltk_tokenizer({})
 
     ost = OpenSextantTagger(OpenSextantTagger.default_config)
+    if not use_live_service:
+        ost.request_json = lambda si: json_data
+
     tokenizer.process_item(si)
     ost.process_item(si)
 

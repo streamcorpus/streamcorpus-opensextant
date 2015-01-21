@@ -144,6 +144,27 @@ class OpenSextantTagger(IncrementalTransform):
         '''
         pass
 
+    def request_json(self, si):
+        # clean_visible will be UTF-8 encoded
+        logger.debug('POST %d bytes of clean_visible to %s',
+                     len(si.body.clean_visible), self.rest_url)
+        headers = {
+            'content-encoding': 'UTF-8',
+            'content-type': 'text/plain; charset=UTF-8',
+        }
+        response = self.session.post(
+            self.rest_url,
+            data=si.body.clean_visible,
+            verify=self.verify_ssl,
+            headers=headers,
+            timeout=10,
+        )
+        ## save JSON for testing; make file names based on length of clean_visible
+        #fname = 'query-%d.json' % len(si.body.clean_visible)
+        #fpath = os.path.join(os.path.dirname(__file__), 'tests', fname)
+        #open(fpath, 'wb').write(response.content)
+        return response
+
 
     def process_item(self, si, context=None):
         '''Run OpenSextant over a single stream item.
@@ -161,20 +182,8 @@ class OpenSextantTagger(IncrementalTransform):
 
         '''
         if si.body and si.body.clean_visible:
-            # clean_visible will be UTF-8 encoded
-            logger.debug('POST %d bytes of clean_visible to %s',
-                         len(si.body.clean_visible), self.rest_url)
-            headers = {
-                'content-encoding': 'UTF-8',
-                'content-type': 'text/plain; charset=UTF-8',
-            }
-            response = self.session.post(
-                self.rest_url,
-                data=si.body.clean_visible,
-                verify=self.verify_ssl,
-                headers=headers,
-                timeout=10,
-            )
+            response = self.request_json(si)
+
             result = json.loads(response.content)
 
             ## remove a Tagging entry from nltk_tokenizer
