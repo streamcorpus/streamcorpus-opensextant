@@ -10,6 +10,7 @@ setup(
     version=VERSION,
     author='Diffeo, Inc.',
     author_email='support@diffeo.com',
+    description='Transforms for converting opensextant output into Token objects in streamcorpus',
     packages=find_packages(),
     install_requires=[
         'streamcorpus >= 0.3.42',
