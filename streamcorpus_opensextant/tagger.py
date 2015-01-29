@@ -49,6 +49,7 @@ import time
 import traceback
 
 import requests
+from requests.auth import HTTPBasicAuth
 from sortedcollection import SortedCollection
 
 from streamcorpus import Chunk, Tagging, Sentence, Token, make_stream_time, \
