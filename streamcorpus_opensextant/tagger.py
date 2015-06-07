@@ -55,6 +55,8 @@ from sortedcollection import SortedCollection
 from streamcorpus import Chunk, Tagging, Sentence, Token, make_stream_time, \
     OffsetType, EntityType, MentionType
 from streamcorpus_pipeline.stages import IncrementalTransform
+from streamcorpus.ttypes import Selector, Offset, OffsetType
+
 
 logger = logging.getLogger('streamcorpus_pipeline' + '.' + __name__)
 
@@ -166,6 +168,31 @@ class OpenSextantTagger(IncrementalTransform):
         #open(fpath, 'wb').write(response.content)
         return response
 
+    def get_selectors(self,results):
+	'''Given a JSON result from opensextant, create Selectors 
+	'''
+	features = results["annoList"]
+
+	# For each feature, if it is a PLACE, yield a Selector
+	for feature in features:	
+	    if(feature['type'] == 'PLACE'):
+		lat = feature['features']['place']['latitude']
+		lng = feature['features']['place']['longitude']
+		raw = feature['features']['place']['placeName']
+		pid = feature['features']['place']['placeID']
+		span = (feature['start'],feature['end'])
+
+		canonical=str(lat)+","+str(lng)
+
+		# Set the offset
+               	o = Offset(type=OffsetType.CHARS,
+                    content_form='clean_visible',
+                    first=span[0], length=span[1] - span[0])
+
+                yield Selector(selector_type="PLACE",
+                    raw_selector=raw.encode('utf-8'),
+                    canonical_selector=canonical.encode('utf-8'),
+                    offsets={OffsetType.CHARS: o})
 
     def process_item(self, si, context=None):
         '''Run OpenSextant over a single stream item.

@@ -109,6 +109,44 @@ class DummyResponse(object):
         self.content = json_data
 
 
+#@pytest.mark.parametrize('text', u"I flew to Paris, France. Then came home to Washington.")
+def test_get_selectors():
+
+    selector_config = {
+        'scheme': 'http',
+        'network_address': 'geoint.diffeo.com',
+        'service_path': '/opensextant/extract/general/json',
+        'verify_ssl': False,
+        'username': 'diffeo',
+        'password': 'd1ff30',
+        'cert': None
+    }
+
+    text = u"I flew to Paris, France. Then came home to Washington."
+    result_text = '{"content":"I flew to Paris, France. Then came home to Washington.","annoList":[{"start":17,"end":23,"type":"PLACE","matchText":"France","features":{"hierarchy":"Geo.place.namedPlace","place":{"placeName":"France","expandedPlaceName":null,"nameType":"name","nameTypeSystem":null,"countryCode":"FR","admin1":null,"admin2":null,"featureClass":"Geo.featureType.AdminRegion","featureCode":"PCLI","geocoord":{"latitude":46.0,"longitude":2.0,"precision":-1,"isValid":true},"sourceNameID":null,"sourceFeatureID":null,"placeID":"NGA-1427981","source":"NGA","nameBias":0.05000000074505806,"idBias":0.49000000953674316,"latitude":46.0,"longitude":2.0,"anAdmin1":false,"abbreviation":false,"acountry":true,"nationalCapital":false}}},{"start":10,"end":15,"type":"PLACE","matchText":"Paris","features":{"hierarchy":"Geo.place.namedPlace","place":{"placeName":"Paris","expandedPlaceName":null,"nameType":"name","nameTypeSystem":null,"countryCode":"FR","admin1":null,"admin2":null,"featureClass":"Geo.featureType.PopulatedPlace","featureCode":"PPLC","geocoord":{"latitude":48.86667,"longitude":2.33333,"precision":-1,"isValid":true},"sourceNameID":null,"sourceFeatureID":null,"placeID":"NGA-1456928","source":"NGA","nameBias":0.05000000074505806,"idBias":0.9549999833106995,"latitude":48.86667,"longitude":2.33333,"anAdmin1":false,"abbreviation":false,"acountry":false,"nationalCapital":true}}}]}'
+
+    if(type(text) is str): text.encode('utf8')
+
+    si = make_stream_item(10, 'fake_url')
+    si.body.clean_visible = text
+
+    tokenizer = nltk_tokenizer({})
+    
+    # Modify the above config to use a different backend
+    #ost = OpenSextantTagger(selector_config)
+
+    # Uses default/ local backend
+    ost = OpenSextantTagger(OpenSextantTagger.default_config)
+
+    tokenizer.process_item(si)
+
+    response = ost.request_json(si)
+
+    assert response.content == result_text
+
+    results = json.loads(response.content)
+    selectors = ost.get_selectors(results)
+
 @pytest.mark.parametrize('text,tokens,json_path', texts)
 def test_opensextant_tagger(text, tokens, json_path, use_live_service):
 
