@@ -168,7 +168,7 @@ class OpenSextantTagger(IncrementalTransform):
         #open(fpath, 'wb').write(response.content)
         return response
 
-    def get_selectors(self,results):
+    def get_geo_selectors(self, results):
 	'''Given a JSON result from opensextant, create Selectors 
 	'''
 	features = results["annoList"]
@@ -182,7 +182,9 @@ class OpenSextantTagger(IncrementalTransform):
 		pid = feature['features']['place']['placeID']
 		span = (feature['start'],feature['end'])
 
-		canonical=str(lat)+","+str(lng)
+                # maintain X, Y, Z order; even though people speak
+                # "latitude longitude", they are saying "Y X"!
+		canonical = '%f,%f,%f' % (lng, lat, 0)
 
 		# Set the offset
                	o = Offset(type=OffsetType.CHARS,
@@ -193,6 +195,11 @@ class OpenSextantTagger(IncrementalTransform):
                     raw_selector=raw.encode('utf-8'),
                     canonical_selector=canonical.encode('utf-8'),
                     offsets={OffsetType.CHARS: o})
+
+
+    def add_geo_selectors(self, si, results):
+        si.body.selectors[self.tagger_id] = list(self.get_geo_selectors())
+
 
     def process_item(self, si, context=None):
         '''Run OpenSextant over a single stream item.
@@ -224,7 +231,11 @@ class OpenSextantTagger(IncrementalTransform):
             )
             si.body.taggings[self.tagger_id] = tagging
 
-            self.annotate_sentences(si, result)
+            if self.config.get('annotate_sentences') is True:
+                self.annotate_sentences(si, result)
+
+            if self.config.get('add_geo_selectors') is True:
+                self.geo_selectors(si, result)
 
             #si.body.relations[self.tagger_id] = make_relations(result)
             #si.body.attributes[self.tagger_id] = make_attributes(result)
