@@ -145,7 +145,7 @@ def test_get_selectors():
     assert response.content == result_text
 
     results = json.loads(response.content)
-    selectors = ost.get_selectors(results)
+    selectors = ost.get_geo_selectors(results)
 
 @pytest.mark.parametrize('text,tokens,json_path', texts)
 def test_opensextant_tagger(text, tokens, json_path, use_live_service):

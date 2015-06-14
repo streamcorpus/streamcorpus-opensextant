@@ -90,7 +90,9 @@ class OpenSextantTagger(IncrementalTransform):
         'verify_ssl': False,
         'username': None,
         'password': None,
-        'cert': None
+        'cert': None,
+        'annotate_sentences': True,
+        'add_geo_selectors': True,
     }
 
     def __init__(self, config, *args, **kwargs):
@@ -197,10 +199,6 @@ class OpenSextantTagger(IncrementalTransform):
                     offsets={OffsetType.CHARS: o})
 
 
-    def add_geo_selectors(self, si, results):
-        si.body.selectors[self.tagger_id] = list(self.get_geo_selectors())
-
-
     def process_item(self, si, context=None):
         '''Run OpenSextant over a single stream item.
 
@@ -235,7 +233,7 @@ class OpenSextantTagger(IncrementalTransform):
                 self.annotate_sentences(si, result)
 
             if self.config.get('add_geo_selectors') is True:
-                self.geo_selectors(si, result)
+                si.body.selectors[self.tagger_id] = list(self.get_geo_selectors(result))
 
             #si.body.relations[self.tagger_id] = make_relations(result)
             #si.body.attributes[self.tagger_id] = make_attributes(result)
