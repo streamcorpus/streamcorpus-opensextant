@@ -217,7 +217,7 @@ class OpenSextantTagger(IncrementalTransform):
         if si.body and si.body.clean_visible:
             response = self.request_json(si)
 
-            result = json.loads(response.content)
+            results = json.loads(response.content)
 
             ## remove a Tagging entry from nltk_tokenizer
             #si.body.taggings.pop('nltk_tokenizer')
@@ -230,10 +230,10 @@ class OpenSextantTagger(IncrementalTransform):
             si.body.taggings[self.tagger_id] = tagging
 
             if self.config.get('annotate_sentences') is True:
-                self.annotate_sentences(si, result)
+                self.annotate_sentences(si, results)
 
             if self.config.get('add_geo_selectors') is True:
-                si.body.selectors[self.tagger_id] = list(self.get_geo_selectors(result))
+                si.body.selectors[self.tagger_id] = list(self.get_geo_selectors(results))
 
             #si.body.relations[self.tagger_id] = make_relations(result)
             #si.body.attributes[self.tagger_id] = make_attributes(result)
