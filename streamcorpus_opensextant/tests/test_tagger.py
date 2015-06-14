@@ -2,6 +2,7 @@
 # -*- coding: <utf-8> -*-
 
 from __future__ import absolute_import
+from copy import deepcopy
 import json
 import logging
 import os
@@ -10,7 +11,8 @@ import sys
 
 
 import requests
-from streamcorpus import make_stream_item, Chunk, EntityType
+from streamcorpus import make_stream_item, Chunk, \
+    EntityType, OffsetType
 from streamcorpus_pipeline._tokenizer import nltk_tokenizer
 from streamcorpus_pipeline._clean_html import clean_html
 from streamcorpus_pipeline._clean_visible import clean_visible
@@ -104,73 +106,88 @@ def use_live_service(request):
     return request.param
 
 
+def setup_mock_live_service(ost, json_path):
+    '''monkey patch the `ost` OpenSextantTagger instance so that it gets
+    its json from other than a live service.
+
+    '''
+    fpath = os.path.join(os.path.dirname(__file__), json_path)
+    ost.request_json = lambda si: DummyResponse(open(fpath).read())
+
+
 class DummyResponse(object):
     def __init__(self, json_data):
         self.content = json_data
 
 
-#@pytest.mark.parametrize('text', u"I flew to Paris, France. Then came home to Washington.")
-def test_get_selectors():
-
-    selector_config = {
-        'scheme': 'http',
-        'network_address': 'geoint.diffeo.com',
-        'service_path': '/opensextant/extract/general/json',
-        'verify_ssl': False,
-        'username': 'diffeo',
-        'password': 'd1ff30',
-        'cert': None
-    }
-
-    text = u"I flew to Paris, France. Then came home to Washington."
-    result_text = '{"content":"I flew to Paris, France. Then came home to Washington.","annoList":[{"start":17,"end":23,"type":"PLACE","matchText":"France","features":{"hierarchy":"Geo.place.namedPlace","place":{"placeName":"France","expandedPlaceName":null,"nameType":"name","nameTypeSystem":null,"countryCode":"FR","admin1":null,"admin2":null,"featureClass":"Geo.featureType.AdminRegion","featureCode":"PCLI","geocoord":{"latitude":46.0,"longitude":2.0,"precision":-1,"isValid":true},"sourceNameID":null,"sourceFeatureID":null,"placeID":"NGA-1427981","source":"NGA","nameBias":0.05000000074505806,"idBias":0.49000000953674316,"latitude":46.0,"longitude":2.0,"anAdmin1":false,"abbreviation":false,"acountry":true,"nationalCapital":false}}},{"start":10,"end":15,"type":"PLACE","matchText":"Paris","features":{"hierarchy":"Geo.place.namedPlace","place":{"placeName":"Paris","expandedPlaceName":null,"nameType":"name","nameTypeSystem":null,"countryCode":"FR","admin1":null,"admin2":null,"featureClass":"Geo.featureType.PopulatedPlace","featureCode":"PPLC","geocoord":{"latitude":48.86667,"longitude":2.33333,"precision":-1,"isValid":true},"sourceNameID":null,"sourceFeatureID":null,"placeID":"NGA-1456928","source":"NGA","nameBias":0.05000000074505806,"idBias":0.9549999833106995,"latitude":48.86667,"longitude":2.33333,"anAdmin1":false,"abbreviation":false,"acountry":false,"nationalCapital":true}}}]}'
-
-    if(type(text) is str): text.encode('utf8')
-
-    si = make_stream_item(10, 'fake_url')
-    si.body.clean_visible = text
-
-    tokenizer = nltk_tokenizer({})
-    
-    # Modify the above config to use a different backend
-    #ost = OpenSextantTagger(selector_config)
-
-    # Uses default/ local backend
-    ost = OpenSextantTagger(OpenSextantTagger.default_config)
-
-    tokenizer.process_item(si)
-
-    response = ost.request_json(si)
-
-    assert response.content == result_text
-
-    results = json.loads(response.content)
-    selectors = ost.get_geo_selectors(results)
-
 @pytest.mark.parametrize('text,tokens,json_path', texts)
-def test_opensextant_tagger(text, tokens, json_path, use_live_service):
+def test_opensextant_tagger_on_data_both(text, tokens, json_path, use_live_service):
+    '''Test that the transform works when configured with both
+    annotate_sentences and add_geo_selectors.  The first requires
+    nltk_tokenizer to have been run first.
+
+    '''
+    config = deepcopy(OpenSextantTagger.default_config)
+    config['annotate_sentences'] = True
+    config['add_geo_selectors'] = True
+    ost = OpenSextantTagger(config)
+
+    if not use_live_service:
+        setup_mock_live_service(ost, json_path)
 
     si = make_stream_item(10, 'fake_url')
     si.body.clean_visible = text.encode('utf8')
 
     tokenizer = nltk_tokenizer({})
-
-    ost = OpenSextantTagger(OpenSextantTagger.default_config)
-    if not use_live_service:
-        fpath = os.path.join(os.path.dirname(__file__), json_path)
-        ost.request_json = lambda si: DummyResponse(open(fpath).read())
-
     tokenizer.process_item(si)
     ost.process_item(si)
+    verify_sentences(si, tokens)
+    verify_selectors(si)
 
+
+def verify_sentences(si, tokens):
+    sent_idx = -1
     for sent_idx, sent in enumerate(si.body.sentences['opensextant']):
         logger.info([tok.token for tok in sent.tokens])
         for idx, tok in enumerate(sent.tokens):
             logger.info('sent_idx = %d, token idx = %d', sent_idx, idx)
             assert tok.token.decode('utf8') == tokens[sent_idx][idx][0]
             assert tok.entity_type == tokens[sent_idx][idx][1]
+    assert sent_idx > -1
 
-    
+def verify_selectors(si):
+    sel_idx = -1
+    for sel_idx, sel in enumerate(si.body.selectors['opensextant']):
+        logger.info('sel_idx = %d, sel = %r', sel_idx, sel)
+        assert sel.selector_type
+        assert sel.raw_selector
+        assert sel.canonical_selector
+        assert sel.offsets[OffsetType.CHARS].first > -1
+    assert sel_idx > -1
+
+
+@pytest.mark.parametrize('text,tokens,json_path', texts)
+def test_opensextant_tagger_on_data_selectors_only(text, tokens, json_path, use_live_service):
+    '''Test that the transform works when configured to only produce
+    streamcorpus.Selector objects and not to annotate_sentences.  In
+    particular, this does *not* need nltk to run before it.
+
+    '''
+    config = deepcopy(OpenSextantTagger.default_config)
+    config['annotate_sentences'] = False
+    config['add_geo_selectors'] = True
+    ost = OpenSextantTagger(config)
+
+    if not use_live_service:
+        setup_mock_live_service(ost, json_path)
+
+    si = make_stream_item(10, 'fake_url')
+    si.body.clean_visible = text.encode('utf8')
+
+    ost.process_item(si)
+    verify_selectors(si)
+
+
 def main():
     logging.basicConfig(level=logging.DEBUG)
 
