@@ -15,6 +15,7 @@ setup(
     install_requires=[
         'streamcorpus >= 0.3.42',
         'streamcorpus_pipeline >= 0.5.30',
+        'geojson',
     ],
     entry_points={
         'streamcorpus_pipeline.stages': [

@@ -9,7 +9,7 @@ import os
 import pytest
 import sys
 
-
+import geojson
 import requests
 from streamcorpus import make_stream_item, Chunk, \
     EntityType, OffsetType
@@ -159,9 +159,9 @@ def verify_selectors(si):
     sel_idx = -1
     for sel_idx, sel in enumerate(si.body.selectors['opensextant']):
         logger.info('sel_idx = %d, sel = %r', sel_idx, sel)
-        assert sel.selector_type
+        assert sel.selector_type == 'GEOJSON'
         assert sel.raw_selector
-        assert sel.canonical_selector
+        assert 'coordinates' in geojson.loads(sel.canonical_selector)
         assert sel.offsets[OffsetType.CHARS].first > -1
     assert sel_idx > -1
 

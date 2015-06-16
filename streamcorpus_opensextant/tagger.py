@@ -48,6 +48,7 @@ import sys
 import time
 import traceback
 
+import geojson
 import requests
 from requests.auth import HTTPBasicAuth
 from sortedcollection import SortedCollection
@@ -184,18 +185,19 @@ class OpenSextantTagger(IncrementalTransform):
 		pid = feature['features']['place']['placeID']
 		span = (feature['start'],feature['end'])
 
-                # maintain X, Y, Z order; even though people speak
-                # "latitude longitude", they are saying "Y X"!
-		canonical = '%f,%f,%f' % (lng, lat, 0)
+                point = geojson.Point((lng, lat))
 
 		# Set the offset
                	o = Offset(type=OffsetType.CHARS,
                     content_form='clean_visible',
                     first=span[0], length=span[1] - span[0])
 
-                yield Selector(selector_type="PLACE",
+                yield Selector(
+                    # selector_type is allowed to be any string, but
+                    # downstream code depends on knowing what it is
+                    selector_type='GEOJSON',
                     raw_selector=raw.encode('utf-8'),
-                    canonical_selector=canonical.encode('utf-8'),
+                    canonical_selector=geojson.dumps(point),
                     offsets={OffsetType.CHARS: o})
 
 
