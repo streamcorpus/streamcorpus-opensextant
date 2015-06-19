@@ -17,6 +17,8 @@ https://github.com/OpenSextant/OpenSextantToolbox/ as a tagger in
       batch_transforms: [multi_token_match_align_labels]
       writers: [to_local_chunks]
       opensextant:
+        add_geo_selectors: true
+        annotate_sentences: false
         path_in_third: opensextant/opensextant-current
       multi_token_match_align_labels:
         annotator_id: author
@@ -49,6 +51,7 @@ import time
 import traceback
 
 import geojson
+from geojson import Point, Feature
 import requests
 from requests.auth import HTTPBasicAuth
 from sortedcollection import SortedCollection
@@ -87,7 +90,8 @@ class OpenSextantTagger(IncrementalTransform):
     default_config = {
         'scheme': 'http',
         'network_address': 'localhost:8182',
-        'service_path': '/opensextant/extract/general/json',
+        'service_path': '/opensextant/extract/',
+        'confidence_threshold': 0,
         'verify_ssl': False,
         'username': None,
         'password': None,
@@ -125,6 +129,14 @@ class OpenSextantTagger(IncrementalTransform):
         kwargs = {}
         self.rest_url = config['scheme'] + '://' + config['network_address'] \
                         + config['service_path']
+        if config.get('annotate_sentences'):
+            # use full NER models from GATE, library upon which
+            # opensextant is built: https://gate.ac.uk/projects.html
+            self.rest_url += 'general/json'
+        else:
+            # only use the GEO models from GATE
+            self.rest_url += 'geo/json'
+
         self.verify_ssl = config['verify_ssl']
 
         ## Session carries connection pools that automatically provide
@@ -183,9 +195,16 @@ class OpenSextantTagger(IncrementalTransform):
 		lng = feature['features']['place']['longitude']
 		raw = feature['features']['place']['placeName']
 		pid = feature['features']['place']['placeID']
+		conf = feature['features']['place']['nameBias']
 		span = (feature['start'],feature['end'])
 
-                point = geojson.Point((lng, lat))
+                point = Point((lng, lat))
+                properties = {'name': raw}
+                feature = Feature(geometry=point, 
+                                  properties=properties, id=pid)
+
+                logger.info('emitting Selector(name=%r, ... conf=%f',
+                            raw, conf)
 
 		# Set the offset
                	o = Offset(type=OffsetType.CHARS,
@@ -197,8 +216,38 @@ class OpenSextantTagger(IncrementalTransform):
                     # downstream code depends on knowing what it is
                     selector_type='GEOJSON',
                     raw_selector=raw.encode('utf-8'),
-                    canonical_selector=geojson.dumps(point),
+                    canonical_selector=geojson.dumps(feature),
                     offsets={OffsetType.CHARS: o})
+
+
+    def filter(self, results):
+        '''Boosting precision will naturally degrade recall.  The two ways to
+        get better precision. (Notes adapted from dlutz comments.)
+
+        1. Use the small gazetteer. It contains a small subset of the
+        big gazetteer but contains the most common place names
+        (countries, capitals provinces ...)  It is also much faster.
+
+        2. Filter by the placeconfidence score. The PlaceCandidate
+        object attached to each Place annotation has a
+        getPlaceConfidenceScore() method which will return a score
+        between -1 to +1.  See the geotagger example in
+        org.opensextant.examples.GeotaggerExample around line 155
+        where the results are being written out. The comment shows how
+        to get the PlaceCandidate object.  If you are using the REST
+        interfaces, there is an element named "nameBias" in the JSON
+        returned for each place which is the same score as described
+        above.  The model currently generates weakly useful confidence
+        scores in that filtering out the low scores does increase the
+        precision a bit but at a large cost in recall.
+
+        '''
+        confidence_threshold = self.config.get('confidence_threshold', 0)
+        def confidence_filter(result):
+            if result['type'] != 'PLACE': return True
+            conf = result['feature']['place']['nameBias']
+            return conf >= confidence_threshold
+        return filter(confidence_filter, results)
 
 
     def process_item(self, si, context=None):
@@ -221,6 +270,8 @@ class OpenSextantTagger(IncrementalTransform):
 
             results = json.loads(response.content)
 
+            results = self.filter(results)
+
             ## remove a Tagging entry from nltk_tokenizer
             #si.body.taggings.pop('nltk_tokenizer')
             tagging = Tagging(
@@ -235,7 +286,9 @@ class OpenSextantTagger(IncrementalTransform):
                 self.annotate_sentences(si, results)
 
             if self.config.get('add_geo_selectors') is True:
-                si.body.selectors[self.tagger_id] = list(self.get_geo_selectors(results))
+                selectors = list(self.get_geo_selectors(results))
+                logger.info('opensextant added %d selectors', len(selectors))
+                si.body.selectors[self.tagger_id] = selectors
 
             #si.body.relations[self.tagger_id] = make_relations(result)
             #si.body.attributes[self.tagger_id] = make_attributes(result)
