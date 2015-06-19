@@ -92,6 +92,7 @@ class OpenSextantTagger(IncrementalTransform):
         'network_address': 'localhost:8182',
         'service_path': '/opensextant/extract/',
         'confidence_threshold': 0,
+        'timeout': 20,
         'verify_ssl': False,
         'username': None,
         'password': None,
@@ -175,7 +176,7 @@ class OpenSextantTagger(IncrementalTransform):
             data=si.body.clean_visible,
             verify=self.verify_ssl,
             headers=headers,
-            timeout=10,
+            timeout=int(self.config.get('timeout', 10)),
         )
         ## save JSON for testing; make file names based on length of clean_visible
         #fname = 'query-%d.json' % len(si.body.clean_visible)
