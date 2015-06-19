@@ -161,7 +161,8 @@ def verify_selectors(si):
         logger.info('sel_idx = %d, sel = %r', sel_idx, sel)
         assert sel.selector_type == 'GEOJSON'
         assert sel.raw_selector
-        assert 'coordinates' in geojson.loads(sel.canonical_selector)
+        assert 'geometry' in geojson.loads(sel.canonical_selector)
+        assert 'coordinates' in geojson.loads(sel.canonical_selector)['geometry']
         assert sel.offsets[OffsetType.CHARS].first > -1
     assert sel_idx > -1
 

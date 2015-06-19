@@ -245,9 +245,10 @@ class OpenSextantTagger(IncrementalTransform):
         confidence_threshold = self.config.get('confidence_threshold', 0)
         def confidence_filter(result):
             if result['type'] != 'PLACE': return True
-            conf = result['feature']['place']['nameBias']
+            conf = result['features']['place']['nameBias']
             return conf >= confidence_threshold
-        return filter(confidence_filter, results)
+        results['annoList'] = filter(confidence_filter, results['annoList'])
+        return results
 
 
     def process_item(self, si, context=None):
