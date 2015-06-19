@@ -92,7 +92,8 @@ class OpenSextantTagger(IncrementalTransform):
         'network_address': 'localhost:8182',
         'service_path': '/opensextant/extract/',
         'confidence_threshold': 0,
-        'timeout': 20,
+        'timeout': 40,
+        'retries': 3,
         'verify_ssl': False,
         'username': None,
         'password': None,
@@ -171,13 +172,26 @@ class OpenSextantTagger(IncrementalTransform):
             'content-encoding': 'UTF-8',
             'content-type': 'text/plain; charset=UTF-8',
         }
-        response = self.session.post(
-            self.rest_url,
-            data=si.body.clean_visible,
-            verify=self.verify_ssl,
-            headers=headers,
-            timeout=int(self.config.get('timeout', 10)),
-        )
+        retries = int(self.config.get('retries', 1))
+        tries = 0
+        while tries < retries:
+            tries += 1
+            try:
+                response = self.session.post(
+                    self.rest_url,
+                    data=si.body.clean_visible,
+                    verify=self.verify_ssl,
+                    headers=headers,
+                    timeout=int(self.config.get('timeout', 10)),
+                )
+                break
+            except Exception, exc:
+                if str(exc).startswith('ReadTimeout'):
+                    logger.info('retrying OpenSextant connection: %d of %d',
+                                tries, retries)
+                    time.sleep(2**tries)
+                    continue
+                raise
         ## save JSON for testing; make file names based on length of clean_visible
         #fname = 'query-%d.json' % len(si.body.clean_visible)
         #fpath = os.path.join(os.path.dirname(__file__), 'tests', fname)
