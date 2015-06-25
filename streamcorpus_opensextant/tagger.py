@@ -26,7 +26,7 @@ https://github.com/OpenSextant/OpenSextantToolbox/ as a tagger in
 
 The ``opensextant`` stage is an incremental transform.  Failures on
 individual stream items will result in those stream items remaining in
-the stream, but without any tagging.  
+the stream, but without any tagging.
 
 Note that this stage does *not* run its own aligner, unlike older
 tagger stages.  If desired, you must explicitly include an aligner in
@@ -45,10 +45,7 @@ from __future__ import absolute_import
 import itertools
 import json
 import logging
-import os.path
-import sys
 import time
-import traceback
 
 import geojson
 from geojson import Point, Feature
@@ -56,10 +53,10 @@ import requests
 from requests.auth import HTTPBasicAuth
 from sortedcollection import SortedCollection
 
-from streamcorpus import Chunk, Tagging, Sentence, Token, make_stream_time, \
+from streamcorpus import Tagging, make_stream_time, \
     OffsetType, EntityType, MentionType
 from streamcorpus_pipeline.stages import IncrementalTransform
-from streamcorpus.ttypes import Selector, Offset, OffsetType
+from streamcorpus.ttypes import Selector, Offset
 
 
 logger = logging.getLogger('streamcorpus_pipeline' + '.' + __name__)
@@ -77,7 +74,7 @@ class OpenSextantTagger(IncrementalTransform):
     This is an incremental transform, and needs to be included in the
     ``incremental_transforms`` list to run within
     :mod:`streamcorpus_pipeline`.
-    
+
     .. automethod:: __init__
     .. automethod:: process_path
     .. automethod:: shutdown
@@ -129,8 +126,11 @@ class OpenSextantTagger(IncrementalTransform):
         '''
         super(OpenSextantTagger, self).__init__(config, *args, **kwargs)
         kwargs = {}
-        self.rest_url = config['scheme'] + '://' + config['network_address'] \
-                        + config['service_path']
+        self.rest_url = (
+            config['scheme'] +
+            '://' + config['network_address'] +
+            config['service_path']
+        )
         if config.get('annotate_sentences'):
             # use full NER models from GATE, library upon which
             # opensextant is built: https://gate.ac.uk/projects.html
@@ -141,9 +141,9 @@ class OpenSextantTagger(IncrementalTransform):
 
         self.verify_ssl = config['verify_ssl']
 
-        ## Session carries connection pools that automatically provide
-        ## HTTP keep-alive, so we can send many documents over one
-        ## connection.
+        # Session carries connection pools that automatically provide
+        # HTTP keep-alive, so we can send many documents over one
+        # connection.
         self.session = requests.Session()
         username = config.get('username')
         password = config.get('password')
@@ -160,7 +160,7 @@ class OpenSextantTagger(IncrementalTransform):
         '''Try to stop processing.
 
         Does nothing, since all of the work is done in-process.
-        
+
         '''
         pass
 
@@ -192,37 +192,39 @@ class OpenSextantTagger(IncrementalTransform):
                     time.sleep(2**tries)
                     continue
                 raise
-        ## save JSON for testing; make file names based on length of clean_visible
-        #fname = 'query-%d.json' % len(si.body.clean_visible)
-        #fpath = os.path.join(os.path.dirname(__file__), 'tests', fname)
-        #open(fpath, 'wb').write(response.content)
+        # save JSON for testing; make file names based on length of
+        # clean_visible
+        # fname = 'query-%d.json' % len(si.body.clean_visible)
+        # fpath = os.path.join(os.path.dirname(__file__), 'tests', fname)
+        # open(fpath, 'wb').write(response.content)
         return response
 
     def get_geo_selectors(self, results):
-	'''Given a JSON result from opensextant, create Selectors 
-	'''
-	features = results["annoList"]
+        '''Given a JSON result from opensextant, create Selectors
+        '''
+        features = results["annoList"]
 
-	# For each feature, if it is a PLACE, yield a Selector
-	for feature in features:	
-	    if(feature['type'] == 'PLACE'):
-		lat = feature['features']['place']['latitude']
-		lng = feature['features']['place']['longitude']
-		raw = feature['features']['place']['placeName']
-		pid = feature['features']['place']['placeID']
-		conf = feature['features']['place']['nameBias']
-		span = (feature['start'],feature['end'])
+        # For each feature, if it is a PLACE, yield a Selector
+        for feature in features:
+            if(feature['type'] == 'PLACE'):
+                lat = feature['features']['place']['latitude']
+                lng = feature['features']['place']['longitude']
+                raw = feature['features']['place']['placeName']
+                pid = feature['features']['place']['placeID']
+                conf = feature['features']['place']['nameBias']
+                span = (feature['start'], feature['end'])
 
                 point = Point((lng, lat))
                 properties = {'name': raw}
-                feature = Feature(geometry=point, 
+                feature = Feature(geometry=point,
                                   properties=properties, id=pid)
 
                 logger.info('emitting Selector(name=%r, ... conf=%f',
                             raw, conf)
 
-		# Set the offset
-               	o = Offset(type=OffsetType.CHARS,
+                # Set the offset
+                o = Offset(
+                    type=OffsetType.CHARS,
                     content_form='clean_visible',
                     first=span[0], length=span[1] - span[0])
 
@@ -233,7 +235,6 @@ class OpenSextantTagger(IncrementalTransform):
                     raw_selector=raw.encode('utf-8'),
                     canonical_selector=geojson.dumps(feature),
                     offsets={OffsetType.CHARS: o})
-
 
     def filter(self, results):
         '''Boosting precision will naturally degrade recall.  The two ways to
@@ -258,13 +259,15 @@ class OpenSextantTagger(IncrementalTransform):
 
         '''
         confidence_threshold = self.config.get('confidence_threshold', 0)
+
         def confidence_filter(result):
-            if result['type'] != 'PLACE': return True
+            if result['type'] != 'PLACE':
+                return True
             conf = result['features']['place']['nameBias']
             return conf >= confidence_threshold
+
         results['annoList'] = filter(confidence_filter, results['annoList'])
         return results
-
 
     def process_item(self, si, context=None):
         '''Run OpenSextant over a single stream item.
@@ -288,13 +291,13 @@ class OpenSextantTagger(IncrementalTransform):
 
             results = self.filter(results)
 
-            ## remove a Tagging entry from nltk_tokenizer
-            #si.body.taggings.pop('nltk_tokenizer')
+            # remove a Tagging entry from nltk_tokenizer
+            # si.body.taggings.pop('nltk_tokenizer')
             tagging = Tagging(
                 tagger_id=self.tagger_id,
                 tagger_version='2.1',
                 generation_time=make_stream_time(time.time()),
-                raw_tagging = response.content
+                raw_tagging=response.content
             )
             si.body.taggings[self.tagger_id] = tagging
 
@@ -306,15 +309,13 @@ class OpenSextantTagger(IncrementalTransform):
                 logger.info('opensextant added %d selectors', len(selectors))
                 si.body.selectors[self.tagger_id] = selectors
 
-            #si.body.relations[self.tagger_id] = make_relations(result)
-            #si.body.attributes[self.tagger_id] = make_attributes(result)
+            # si.body.relations[self.tagger_id] = make_relations(result)
+            # si.body.attributes[self.tagger_id] = make_attributes(result)
 
         return si
 
-
     def annotate_sentences(self, si, result):
         logger.info(json.dumps(result, indent=4, sort_keys=4))
-        #sys.exit()
 
         sentences = si.body.sentences.pop('nltk_tokenizer')
         si.body.sentences[self.tagger_id] = sentences
@@ -327,23 +328,22 @@ class OpenSextantTagger(IncrementalTransform):
         cv = si.body.clean_visible.decode('utf8')
         mention_id = 0
         for anno in result.get('annoList', []):
-            #if not anno.get('features', {}).get('isEntity'): 
-            #    logger.debug('skipping isEntity=False: %s', 
-            #                 json.dumps(anno, indent=4, sort_keys=True))
-            #    continue
+            # if not anno.get('features', {}).get('isEntity'):
+            #     logger.debug('skipping isEntity=False: %s',
+            #                  json.dumps(anno, indent=4, sort_keys=True))
+            #     continue
             start = anno['start']
             end = anno['end']
             if not cv[start:end] == anno['matchText']:
-                ## these appear to typically be spaces collapsed by OpenSextant 
-                #if anno['matchText'] in whitespace_re.sub(' ', cv[start-300:end+300]):
+                # these appear to typically be spaces collapsed by OpenSextant
                 pre = 30
                 post = 30
-                logger.debug('alignment failure:\n\t%s\n\t%s%s%s',
-                                si.body.clean_visible.decode('utf8')[start-pre:end+post],
-                                ' ' * pre,
-                                anno['matchText'],
-                                ' ' * post,
-                )
+                logger.debug(
+                    'alignment failure:\n\t%s\n\t%s%s%s',
+                    si.body.clean_visible.decode('utf8')[start-pre:end+post],
+                    ' ' * pre,
+                    anno['matchText'],
+                    ' ' * post)
 
             for tok in toks.find_range(start, end):
                 fhierarchy = anno['features']['hierarchy']
@@ -359,26 +359,26 @@ class OpenSextantTagger(IncrementalTransform):
                     tok.entity_type = e_type
                     tok.mention_type = m_type
                     tok.mention_id = mention_id
-                    ## too bad no coref chains, so nominals are not connected
-                    ## to names:
-                    tok.equiv_id = mention_id  
+                    # too bad no coref chains, so nominals are not connected
+                    # to names:
+                    tok.equiv_id = mention_id
 
             mention_id += 1
 
 
 entity_types = {
-    ## most events are unnamed, so default to NOM
+    # most events are unnamed, so default to NOM
     'Action': (EntityType.EVENT, MentionType.NOM),
 
     'Attribute.attribute.measurableCharacteristic': None,
     'Attribute.weight': None,
 
-    ## descriptive attributes --> nominatives
+    # descriptive attributes --> nominatives
     'Geo.area': (EntityType.LOC, MentionType.NOM),
     'Geo.distance': (EntityType.LOC, MentionType.NOM),
     'Geo.weather': (EntityType.LOC, MentionType.NOM),
 
-    ## most GEO area named locations
+    # most GEO area named locations
     'Geo.featureType.AdminRegion': (EntityType.LOC, MentionType.NAME),
     'Geo.featureType.Area': (EntityType.LOC, MentionType.NAME),
     'Geo.featureType.Hydro': (EntityType.LOC, MentionType.NAME),
@@ -392,7 +392,7 @@ entity_types = {
     'Geo.place.geocoordinate': (EntityType.LOC, MentionType.NAME),
     'Geo.place.namedPlace': (EntityType.LOC, MentionType.NAME),
 
-    ## these are usually named facilities
+    # these are usually named facilities
     'Geo.featureType.SpotFeature': (EntityType.FAC, MentionType.NAME),
     'Geo.facilityComponents': (EntityType.FAC, MentionType.NAME),
 
@@ -403,7 +403,7 @@ entity_types = {
     'Organization': (EntityType.ORG, MentionType.NAME),
     'Person': (EntityType.PER, MentionType.NAME),
 
-    ## would be nice to map these into relations
+    # would be nice to map these into relations
     'Person.attitude.emotion': None,
     'Person.attitude.emotion.negativeEmotion': None,
     'Person.attitude.emotion.positiveEmotion': None,
@@ -431,8 +431,8 @@ entity_types = {
 }
 
 
-## this list of hierarchical entity types is copied from
-## https://github.com/OpenSextant/OpenSextantToolbox/blob/master/LanguageResources/docs/
+# this list of hierarchical entity types is copied from
+# https://github.com/OpenSextant/OpenSextantToolbox/blob/master/LanguageResources/docs/
 entity_hierarchy = {
     'Action.event': None,
     'Action.event.crime': None,
@@ -552,4 +552,3 @@ entity_hierarchy = {
     'Time.time': None,
     'Time.timePhrase': None,
 }
-
