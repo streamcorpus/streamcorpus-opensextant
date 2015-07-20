@@ -128,8 +128,8 @@ class OpenSextantTagger(IncrementalTransform):
         kwargs = {}
         self.rest_url = (
             config.get('scheme', 'http') +
-            '://' + config['network_address'] +
-            config['service_path']
+            '://' + config.get('network_address', 'localhost:8182') +
+            config.get('service_path', '/opensextant/extract/')
         )
         if config.get('annotate_sentences'):
             # use full NER models from GATE, library upon which
@@ -139,7 +139,7 @@ class OpenSextantTagger(IncrementalTransform):
             # only use the GEO models from GATE
             self.rest_url += 'geo/json'
 
-        self.verify_ssl = config['verify_ssl']
+        self.verify_ssl = config.get('verify_ssl', False)
 
         # Session carries connection pools that automatically provide
         # HTTP keep-alive, so we can send many documents over one
