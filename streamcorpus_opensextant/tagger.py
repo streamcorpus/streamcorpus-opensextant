@@ -127,7 +127,7 @@ class OpenSextantTagger(IncrementalTransform):
         super(OpenSextantTagger, self).__init__(config, *args, **kwargs)
         kwargs = {}
         self.rest_url = (
-            config['scheme'] +
+            config.get('scheme', 'http') +
             '://' + config['network_address'] +
             config['service_path']
         )
