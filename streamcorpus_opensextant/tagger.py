@@ -1,7 +1,7 @@
 ''':mod:`streamcorpus_pipeline` tagger stage for OpenSextant
 
 .. This software is released under an MIT/X11 open source license.
-   Copyright 2014 Diffeo, Inc.
+   Copyright 2014-2015 Diffeo, Inc.
 
 This provides a connector to use the OpenSextantToolbox
 https://github.com/OpenSextant/OpenSextantToolbox/ as a tagger in
@@ -211,16 +211,13 @@ class OpenSextantTagger(IncrementalTransform):
                 lng = feature['features']['place']['longitude']
                 raw = feature['features']['place']['placeName']
                 pid = feature['features']['place']['placeID']
-                conf = feature['features']['place']['nameBias']
+                # conf = feature['features']['place']['nameBias']
                 span = (feature['start'], feature['end'])
 
                 point = Point((lng, lat))
                 properties = {'name': raw}
                 feature = Feature(geometry=point,
                                   properties=properties, id=pid)
-
-                logger.info('emitting Selector(name=%r, ... conf=%f',
-                            raw, conf)
 
                 # Set the offset
                 o = Offset(
@@ -315,8 +312,6 @@ class OpenSextantTagger(IncrementalTransform):
         return si
 
     def annotate_sentences(self, si, result):
-        logger.info(json.dumps(result, indent=4, sort_keys=4))
-
         sentences = si.body.sentences.pop('nltk_tokenizer')
         si.body.sentences[self.tagger_id] = sentences
 
